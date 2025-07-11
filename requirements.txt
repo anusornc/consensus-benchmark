@@ -1,0 +1,4 @@
+# Python dependencies will be listed here
+# For now, we might need:
+# pyld for JSON-LD processing (if we directly use it)
+pyld
