@@ -76,6 +76,7 @@ class PBFTNode:
 
         self.pending_client_requests = []
         self.network_simulator = None
+        self.buffered_messages = defaultdict(list) # Buffer for out-of-order messages: (view, seq_num) -> [message]
 
         self.update_primary()
 
@@ -251,6 +252,18 @@ class PBFTNode:
             print(f"Node {self.node_id} (V:{view}): Broadcasting PREPARE for S:{seq_num}, D:{digest[:8]}")
             self.broadcast_message(prepare_msg)
             self.handle_prepare(prepare_msg) # Process own prepare message
+
+            # Process buffered messages for this (view, seq_num)
+            buffered_key = (view, seq_num)
+            if buffered_key in self.buffered_messages:
+                for buffered_msg in self.buffered_messages[buffered_key]:
+                    print(f"Node {self.node_id} (V:{view}, S:{seq_num}): Processing buffered {buffered_msg.__class__.__name__} from {buffered_msg.sender_id}")
+                    if isinstance(buffered_msg, PrepareMessage):
+                        self.handle_prepare(buffered_msg)
+                    elif isinstance(buffered_msg, CommitMessage):
+                        self.handle_commit(buffered_msg)
+                del self.buffered_messages[buffered_key]
+
         elif log_entry['request_digest'] == digest and log_entry['status'] == 'pre-prepared':
             print(f"Node {self.node_id}: Received duplicate valid PRE-PREPARE for V:{view}, S:{seq_num} while status is 'pre-prepared'.")
         else: # Should not happen if logic is correct
@@ -281,11 +294,24 @@ class PBFTNode:
         log_entry = self.message_log[view][seq_num]
 
         if log_entry['request_digest'] is None:
-            print(f"Node {self.node_id}: No request_digest for V:{view}, S:{seq_num} (PRE-PREPARE not processed or not primary). Cannot validate PREPARE from {sender_id}. Buffering?")
-            # TODO: Buffer prepare if pre-prepare is pending.
-            return
-        if log_entry['request_digest'] != digest:
-            print(f"Node {self.node_id}: PREPARE digest mismatch for V:{view}, S:{seq_num}. Expected {log_entry['request_digest'][:8]}, got {digest[:8]}. Ignoring PREPARE from {sender_id}.")
+            # If this node is not the primary for this message's view/seq (or it's a future op for current primary),
+            # it means pre-prepare hasn't been processed locally. Buffer the Prepare.
+            # Primary node should have request_digest set if it initiated this seq_num in this view.
+            is_primary_for_this_op = (self.node_id == self.all_node_ids[view % self.n] and view == self.current_view and seq_num == self.current_seq_num)
+            if not is_primary_for_this_op :
+                print(f"Node {self.node_id} (V:{self.current_view}): No request_digest for V:{view}, S:{seq_num} (Pre-prepare not processed). Buffering PREPARE from {sender_id}.")
+                self.buffered_messages[(view, seq_num)].append(prepare_msg)
+                return
+            elif is_primary_for_this_op and log_entry['status'] != 'pre-preparing':
+                 # This case implies primary initiated an operation but its own log_entry is not yet 'pre-preparing'
+                 # which is unexpected. It might happen if there's a race or internal logic error for primary.
+                 print(f"Node {self.node_id} (Primary V:{self.current_view}): Warning - request_digest is None for its own operation V:{view},S:{seq_num} when PREPARE from {sender_id} arrived. Status: {log_entry['status']}. Ignoring PREPARE.")
+                 return
+            # If it *is* primary for this op and digest is None but status *is* 'pre-preparing', then it's an internal error.
+            # This should have been set in initiate_pre_prepare.
+
+        if log_entry['request_digest'] != digest: # This check is vital once request_digest is confirmed to be set.
+            print(f"Node {self.node_id} (V:{self.current_view}): PREPARE digest mismatch for V:{view}, S:{seq_num}. Expected {log_entry['request_digest'][:8]}, got {digest[:8]}. Ignoring PREPARE from {sender_id}.")
             return
 
         if sender_id not in log_entry['prepares']:
@@ -312,7 +338,27 @@ class PBFTNode:
         # Threshold: 2f matching Prepare messages.
         # - Primary needs 2f from backups.
         # - Backup needs its own Prepare + (2f-1) from others = 2f total Prepare messages in its log.
-        if log_entry['status'] == 'pre-prepared' and num_matching_prepares >= (2 * self.f):
+
+        # Determine the correct status before checking threshold for "prepared"
+        # For primary, its own request starts as 'pre-preparing'. For backups, it's 'pre-prepared' after PrePrepare.
+        eligible_to_prepare = False
+        # Check for primary:
+        # Primary's log_entry for its own request will have 'request_digest' and status 'pre-preparing'.
+        # It does not store its own PrePrepareMessage object in log_entry['pre_prepare'].
+        # It needs 2f matching prepares from backups.
+        # num_matching_prepares counts messages in log_entry['prepares'], which are from other nodes.
+        if self.is_primary() and log_entry['status'] == 'pre-preparing' and log_entry['request_digest'] == digest:
+            if num_matching_prepares >= (2 * self.f):
+                eligible_to_prepare = True
+        # Check for backups:
+        # Backup's log_entry status becomes 'pre-prepared' after validating the PrePrepare.
+        # It needs 2f matching prepares (its own + 2f-1 others). num_matching_prepares includes its own.
+        elif not self.is_primary() and log_entry['status'] == 'pre-prepared' and \
+             log_entry['pre_prepare'] is not None and log_entry['pre_prepare'].request_digest == digest:
+            if num_matching_prepares >= (2 * self.f): # This count includes its own prepare
+                eligible_to_prepare = True
+
+        if eligible_to_prepare:
             log_entry['status'] = 'prepared'
             print(f"Node {self.node_id} (V:{view}): **PREPARED** for S:{seq_num}, D:{digest[:8]} with {num_matching_prepares} prepares.")
 
@@ -322,6 +368,9 @@ class PBFTNode:
             print(f"Node {self.node_id} (V:{view}): Broadcasting COMMIT for S:{seq_num}, D:{digest[:8]}")
             self.broadcast_message(commit_msg)
             self.handle_commit(commit_msg) # Process own commit
+        elif log_entry['status'] == 'pre-prepared' or (self.is_primary() and log_entry['status'] == 'pre-preparing'):
+             # Not enough prepares yet, but still in a valid prior state
+             pass
 
 
     def handle_commit(self, commit_msg: CommitMessage):
@@ -348,11 +397,19 @@ class PBFTNode:
         log_entry = self.message_log[view][seq_num]
 
         if log_entry['request_digest'] is None:
-            print(f"Node {self.node_id}: COMMIT for V,S ({view},{seq_num}), D:{digest[:8]} but no local request_digest. Buffering?")
-            # TODO: Buffer.
-            return
+            # Similar to handle_prepare, buffer if pre-prepare/prepare phases haven't established the digest locally.
+            # Primary should have this set from its own pre-prepare initiation.
+            is_primary_for_this_op = (self.node_id == self.all_node_ids[view % self.n] and view == self.current_view and seq_num == self.current_seq_num)
+            if not is_primary_for_this_op:
+                print(f"Node {self.node_id} (V:{self.current_view}): No request_digest for V:{view}, S:{seq_num} (Not prepared). Buffering COMMIT from {sender_id}.")
+                self.buffered_messages[(view, seq_num)].append(commit_msg)
+                return
+            elif is_primary_for_this_op and log_entry['status'] not in ['pre-preparing', 'prepared']:
+                 print(f"Node {self.node_id} (Primary V:{self.current_view}): Warning - request_digest is None or not prepared for its own op V:{view},S:{seq_num} when COMMIT from {sender_id} arrived. Status: {log_entry['status']}. Ignoring COMMIT.")
+                 return
+
         if log_entry['request_digest'] != digest:
-            print(f"Node {self.node_id}: COMMIT digest mismatch for V,S ({view},{seq_num}). Expected {log_entry['request_digest'][:8]}, got {digest[:8]}. Ignoring from {sender_id}.")
+            print(f"Node {self.node_id} (V:{self.current_view}): COMMIT digest mismatch for V:{view}, S:{seq_num}. Expected {log_entry['request_digest'][:8]}, got {digest[:8]}. Ignoring from {sender_id}.")
             return
 
         if sender_id not in log_entry['commits']:

@@ -360,7 +360,8 @@ class PBFTAdapter:
         self.primary_node_id: str | None = None
         self._find_initial_primary()
         self._all_tx_submitted_event = asyncio.Event()
-        self._processed_tx_count = 0
+        # self._processed_tx_count = 0 # This will be implicitly tracked by MetricsCollector now
+        self.globally_committed_seq_nums = set() # Tracks (view, seq_num) to prevent overcounting metrics
 
         self._patch_pbft_nodes_for_metrics()
 
@@ -389,18 +390,26 @@ class PBFTAdapter:
                 log_entry = _node_instance.message_log[view][seq_num]
                 if log_entry['status'] == 'executed':
                     executed_block = _node_instance.blockchain.last_block
-                    if executed_block and executed_block.nonce == seq_num :
-                        _adapter_self.metrics_collector.record_block_committed(
-                            block_id=f"{_node_instance.node_id}-{executed_block.index}",
-                            num_transactions=len(executed_block.transactions),
-                            timestamp=time.perf_counter()
-                        )
-                        for tx_dict in executed_block.transactions:
-                            _adapter_self.metrics_collector.record_tx_finalized(
-                                tx_id=tx_dict['transaction_id'],
-                                block_id=f"{_node_instance.node_id}-{executed_block.index}",
+                    if executed_block and executed_block.nonce == seq_num:
+                        request_key = (view, seq_num) # Use (view, seq_num) as a unique key
+
+                        if request_key not in _adapter_self.globally_committed_seq_nums:
+                            _adapter_self.globally_committed_seq_nums.add(request_key)
+
+                            global_block_id = f"pbft_v{view}_s{seq_num}" # Global ID for this committed request
+                            _adapter_self.metrics_collector.record_block_committed(
+                                block_id=global_block_id,
+                                num_transactions=len(executed_block.transactions),
                                 timestamp=time.perf_counter()
                             )
+                            for tx_dict in executed_block.transactions:
+                                _adapter_self.metrics_collector.record_tx_finalized(
+                                    tx_id=tx_dict['transaction_id'],
+                                    block_id=global_block_id,
+                                    timestamp=time.perf_counter()
+                                )
+                        # If request_key is already in globally_committed_seq_nums, this node's execution
+                        # of the same agreed request is noted, but metrics aren't re-recorded globally.
                     else:
                         _adapter_self.metrics_collector.record_error(
                             f"PBFTAdapter: Mismatch mapping executed seq_num {seq_num} to block on node {_node_instance.node_id}. Last block nonce: {executed_block.nonce if executed_block else 'None'}")
