@@ -37,26 +37,32 @@ class Block:
         self.previous_hash = previous_hash
         self.nonce = nonce
         self.sealer_id = sealer_id
+        self.qc = None # For HotStuff: Quorum Certificate for the parent block.
         self.hash = self.calculate_hash()
 
     def calculate_hash(self) -> str:
         """
         Calculates the SHA256 hash of the block's content.
 
-        The block's content (index, transactions, timestamp, previous_hash, nonce, sealer_id)
+        The block's content (index, transactions, timestamp, previous_hash, nonce, sealer_id, qc)
         is serialized into a JSON string (with sorted keys for consistency)
         before hashing.
 
         Returns:
             str: The hexadecimal string representation of the hash.
         """
+        # QC needs to be serializable if it's an object.
+        # For now, let's assume it can be converted to a dict or is None.
+        qc_data = self.qc.to_dict() if hasattr(self.qc, 'to_dict') else self.qc
+
         block_dict = {
             'index': self.index,
             'transactions': self.transactions,
             'timestamp': self.timestamp,
             'previous_hash': self.previous_hash,
             'nonce': self.nonce,
-            'sealer_id': self.sealer_id
+            'sealer_id': self.sealer_id,
+            'qc': qc_data
         }
         # Ensure the dictionary is sorted by keys for consistent hash results
         block_string = json.dumps(block_dict, sort_keys=True).encode('utf-8')

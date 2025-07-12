@@ -16,7 +16,7 @@ async def main():
         "--consensus",
         type=str,
         default="poa",
-        choices=["poa", "pbft", "pow"], # Added pow
+        choices=["poa", "pbft", "pow", "hotstuff", "pos"], # Added pos
         help="Consensus protocol to benchmark (default: poa)"
     )
     parser.add_argument(
@@ -68,6 +68,25 @@ async def main():
         default=4, # Default difficulty for PoW
         help="Proof of Work difficulty (number of leading zeros required in hash)"
     )
+    # --- HotStuff Specific Configs ---
+    parser.add_argument(
+        "--hotstuff_beat_interval",
+        type=float,
+        default=0.5,
+        help="Interval in seconds for the HotStuff pacemaker to trigger the leader (default: 0.5s)"
+    )
+    parser.add_argument(
+        "--trace_hotstuff_messages",
+        action='store_true',
+        help="Enable detailed P2P message tracing for HotStuff (default: False)"
+    )
+    # --- PoS Specific Configs ---
+    parser.add_argument(
+        "--pos_block_interval",
+        type=float,
+        default=1.0,
+        help="Interval in seconds for PoS validators to attempt block creation (default: 1.0s)"
+    )
     # --- PBFT Specific Configs (Example) ---
     # (Could add more specific PBFT params like view change timeouts later if needed)
 
@@ -108,6 +127,19 @@ async def main():
     # PoW specific
     elif args.consensus == "pow":
         config["pow_difficulty"] = args.pow_difficulty
+    # HotStuff specific
+    elif args.consensus == "hotstuff":
+        config["hotstuff_beat_interval_seconds"] = args.hotstuff_beat_interval
+        config["trace_hotstuff_messages"] = args.trace_hotstuff_messages
+        if args.num_nodes is None: # Default to 4 nodes for HotStuff if not specified
+            config["num_nodes"] = 4
+    elif args.consensus == "pos":
+        config["pos_block_interval_seconds"] = args.pos_block_interval
+        # num_nodes for PoS corresponds to the number of validators in the default set
+        if args.num_nodes is not None:
+             # This is a simplification; a real CLI might take a JSON file for validator stakes.
+             # For now, we just use the default set in the adapter, num_nodes is illustrative.
+             print(f"Note: --num_nodes for PoS is illustrative. Using default validator set in PoSAdapter.")
 
     if args.post_submission_wait is not None:
         config["post_submission_wait_seconds"] = args.post_submission_wait

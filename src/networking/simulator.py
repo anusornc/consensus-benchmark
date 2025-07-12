@@ -135,6 +135,10 @@ class NetworkSimulator:
             handler_method_name = "handle_prepare"
         elif msg_type_name == "CommitMessage":
             handler_method_name = "handle_commit"
+        elif msg_type_name == "ProposalMessage": # HotStuff
+            handler_method_name = "on_receive_proposal"
+        elif msg_type_name == "VoteMessage": # HotStuff
+            handler_method_name = "on_receive_vote"
         # Extend with other message types and their handlers as needed:
         # elif msg_type_name == "ViewChangeMessage":
         #     handler_method_name = "handle_view_change"
