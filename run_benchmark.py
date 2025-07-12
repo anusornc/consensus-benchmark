@@ -16,7 +16,7 @@ async def main():
         "--consensus",
         type=str,
         default="poa",
-        choices=["poa", "pbft", "pow", "hotstuff", "pos"], # Added pos
+        choices=["poa", "pbft", "pow", "hotstuff", "pos", "dpos"], # Added dpos
         help="Consensus protocol to benchmark (default: poa)"
     )
     parser.add_argument(
@@ -87,6 +87,13 @@ async def main():
         default=1.0,
         help="Interval in seconds for PoS validators to attempt block creation (default: 1.0s)"
     )
+    # --- DPoS Specific Configs ---
+    parser.add_argument(
+        "--dpos_block_interval",
+        type=float,
+        default=0.5,
+        help="Interval in seconds for DPoS delegates to produce blocks (default: 0.5s)"
+    )
     # --- PBFT Specific Configs (Example) ---
     # (Could add more specific PBFT params like view change timeouts later if needed)
 
@@ -140,6 +147,11 @@ async def main():
              # This is a simplification; a real CLI might take a JSON file for validator stakes.
              # For now, we just use the default set in the adapter, num_nodes is illustrative.
              print(f"Note: --num_nodes for PoS is illustrative. Using default validator set in PoSAdapter.")
+    elif args.consensus == "dpos":
+        config["dpos_block_interval_seconds"] = args.dpos_block_interval
+        # For DPoS, --num_nodes sets the number of delegates in the default set
+        if args.num_nodes is not None:
+            config["num_nodes"] = args.num_nodes # This will be used by the adapter to generate the delegate list
 
     if args.post_submission_wait is not None:
         config["post_submission_wait_seconds"] = args.post_submission_wait

@@ -11,8 +11,9 @@ from src.transactions.transaction import Transaction
 from src.consensus.poa import PoAConsensus
 from src.consensus.pbft import PBFTNode
 from src.consensus.pow import PoWConsensus
-from src.consensus.pos import PoSConsensus # Added PoS
-from src.consensus.hotstuff import HotStuffNode # Added HotStuff
+from src.consensus.pos import PoSConsensus
+from src.consensus.dpos import DPoSConsensus # Added DPoS
+from src.consensus.hotstuff import HotStuffNode
 from src.networking.simulator import NetworkSimulator
 from .metrics import MetricsCollector
 
@@ -119,6 +120,18 @@ class BenchmarkRunner:
             )
             print(f"PoS setup with {len(validators)} validators.")
 
+        elif consensus_type == "dpos":
+            self.blockchain = Blockchain(genesis_sealer_id="dpos_benchmark_genesis_sealer")
+            default_delegates = [f"delegate-{i}" for i in range(self.config.get("num_nodes", 21))]
+            delegates = self.config.get("dpos_delegates", default_delegates)
+            self.consensus_adapter = DPoSAdapter(
+                blockchain=self.blockchain,
+                delegates=delegates,
+                metrics_collector=self.metrics_collector,
+                config=self.config
+            )
+            print(f"DPoS setup with {len(delegates)} delegates.")
+
         else:
             raise ValueError(f"Unsupported consensus type: {consensus_type}")
 
@@ -206,6 +219,8 @@ class PoAAdapter:
 
     async def submit_transaction(self, tx: Transaction) -> bool:
         self.blockchain.add_transaction(tx)
+        if self._processing_task is None or self._processing_task.done():
+            self._processing_task = asyncio.create_task(self._process_blocks())
         return True
 
     async def no_more_transactions(self):
@@ -646,6 +661,112 @@ class PoSAdapter:
                 break
             if time.perf_counter() - start_wait > timeout_seconds:
                 print(f"PoSAdapter: Timeout waiting for completion. {finalized_count}/{num_target_transactions} finalized.")
+                self._stop_processing_event.set()
+                break
+            await asyncio.sleep(0.2)
+
+        if self._processing_task and not self._processing_task.done():
+            try:
+                await asyncio.wait_for(self._processing_task, timeout=5.0)
+            except asyncio.TimeoutError:
+                self._processing_task.cancel()
+
+class DPoSAdapter:
+    """
+    Adapter for the Delegated Proof of Stake (DPoS) consensus mechanism.
+    Simulates block creation by a rotating schedule of pre-defined delegates.
+    """
+    def __init__(self, blockchain: Blockchain, delegates: list,
+                 metrics_collector: MetricsCollector, config: dict):
+        self.blockchain = blockchain
+        self.dpos_consensus = DPoSConsensus(delegates)
+        self.metrics_collector = metrics_collector
+        self.config = config
+        self._processing_task: asyncio.Task | None = None
+        self._stop_processing_event = asyncio.Event()
+        self._all_tx_submitted_event = asyncio.Event()
+        self._creation_lock = asyncio.Lock()
+
+    async def submit_transaction(self, tx: Transaction) -> bool:
+        """Adds transaction to the blockchain's pending pool."""
+        self.blockchain.add_transaction(tx)
+        async with self._creation_lock:
+            self._ensure_block_creation_is_running()
+        return True
+
+    async def no_more_transactions(self):
+        self._all_tx_submitted_event.set()
+
+    async def stop_processing(self):
+        self._stop_processing_event.set()
+
+    def _ensure_block_creation_is_running(self):
+        if self._processing_task is None or self._processing_task.done():
+            print("DPoSAdapter: Starting block creation process...")
+            self._processing_task = asyncio.create_task(self._create_blocks())
+
+    async def _create_blocks(self):
+        """
+        Internal task that simulates a delegate creating a block when it's their turn.
+        """
+        block_interval = self.config.get("dpos_block_interval_seconds", 0.5) # DPoS often has fast, regular blocks
+        while not self._stop_processing_event.is_set():
+            if not self.blockchain.pending_transactions:
+                if self._all_tx_submitted_event.is_set():
+                    print("DPoSAdapter: All submitted transactions processed. Stopping block creation.")
+                    self._stop_processing_event.set()
+                    break
+                try:
+                    await asyncio.wait_for(asyncio.sleep(0.1), timeout=0.15)
+                except asyncio.TimeoutError: pass
+                if self._stop_processing_event.is_set(): break
+                continue
+
+            tx_list_for_block = list(self.blockchain.pending_transactions)
+
+            # create_block in DPoSConsensus handles delegate selection and block creation
+            new_block = self.dpos_consensus.create_block(self.blockchain.last_block, tx_list_for_block)
+
+            if self.dpos_consensus.validate_block(new_block):
+                if self.blockchain.add_block(new_block):
+                    print(f"DPoSAdapter: Block {new_block.index} created by {new_block.sealer_id} with {len(new_block.transactions)} txs.")
+                    self.metrics_collector.record_block_committed(
+                        new_block.index, len(new_block.transactions), time.perf_counter()
+                    )
+                    for tx_dict in new_block.transactions:
+                        self.metrics_collector.record_tx_finalized(
+                            tx_dict['transaction_id'], new_block.index, time.perf_counter()
+                        )
+                else:
+                    self.metrics_collector.record_error(f"DPoSAdapter: Blockchain rejected valid DPoS block {new_block.index}")
+            else:
+                # This should not happen if our own delegate created it correctly
+                self.metrics_collector.record_error(f"DPoSAdapter: Created DPoS block {new_block.index} failed validation.")
+
+            try:
+                await asyncio.wait_for(asyncio.sleep(block_interval), timeout=block_interval + 0.05)
+            except asyncio.TimeoutError: pass
+            if self._stop_processing_event.is_set(): break
+
+        print("DPoSAdapter: Block creation loop stopped.")
+
+    async def wait_for_completion(self, num_target_transactions: int):
+        self._ensure_block_creation_is_running()
+        start_wait = time.perf_counter()
+        timeout_base = self.config.get("post_submission_wait_seconds", 15)
+        timeout_per_tx = self.config.get("timeout_per_tx_factor_dpos", 1.0)
+        timeout_seconds = timeout_base + (num_target_transactions * timeout_per_tx)
+
+        print(f"DPoSAdapter: Waiting for {num_target_transactions} txs to finalize. Timeout: {timeout_seconds:.2f}s")
+
+        while not self._stop_processing_event.is_set():
+            finalized_count = len(self.metrics_collector.tx_finalized_timestamps.keys())
+            if finalized_count >= num_target_transactions:
+                print(f"DPoSAdapter: Target of {num_target_transactions} transactions finalized.")
+                self._stop_processing_event.set()
+                break
+            if time.perf_counter() - start_wait > timeout_seconds:
+                print(f"DPoSAdapter: Timeout waiting for completion. {finalized_count}/{num_target_transactions} finalized.")
                 self._stop_processing_event.set()
                 break
             await asyncio.sleep(0.2)
