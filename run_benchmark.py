@@ -16,7 +16,7 @@ async def main():
         "--consensus",
         type=str,
         default="poa",
-        choices=["poa", "pbft"], # Add more as they are implemented
+        choices=["poa", "pbft", "pow"], # Added pow
         help="Consensus protocol to benchmark (default: poa)"
     )
     parser.add_argument(
@@ -61,6 +61,13 @@ async def main():
         default=0.2, # Default from BenchmarkRunner's PoAAdapter
         help="Interval in seconds for PoA authority to attempt block creation (default: 0.2s)"
     )
+    # --- PoW Specific Configs ---
+    parser.add_argument(
+        "--pow_difficulty",
+        type=int,
+        default=4, # Default difficulty for PoW
+        help="Proof of Work difficulty (number of leading zeros required in hash)"
+    )
     # --- PBFT Specific Configs (Example) ---
     # (Could add more specific PBFT params like view change timeouts later if needed)
 
@@ -98,6 +105,9 @@ async def main():
     # PoA specific
     if args.consensus == "poa":
         config["poa_block_interval_seconds"] = args.poa_block_interval
+    # PoW specific
+    elif args.consensus == "pow":
+        config["pow_difficulty"] = args.pow_difficulty
 
     if args.post_submission_wait is not None:
         config["post_submission_wait_seconds"] = args.post_submission_wait

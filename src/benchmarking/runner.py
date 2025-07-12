@@ -10,6 +10,7 @@ from src.transactions.transaction import Transaction
 # Consensus mechanisms and helpers
 from src.consensus.poa import PoAConsensus
 from src.consensus.pbft import PBFTNode
+from src.consensus.pow import PoWConsensus # Added PoWConsensus
 from src.networking.simulator import NetworkSimulator
 from .metrics import MetricsCollector
 
@@ -107,6 +108,18 @@ class BenchmarkRunner:
                  print(f"PBFT setup with nodes: {node_ids}. Primary for View 0: {self.nodes[node_ids[0]].primary_id}")
             else:
                  print("PBFT setup with no nodes (num_nodes likely < 1). This will not work as expected.")
+
+        elif consensus_type == "pow":
+            self.blockchain = Blockchain(genesis_sealer_id="pow_benchmark_genesis_sealer")
+            # PoW difficulty can be set in config, e.g., config.get("pow_difficulty", 4)
+            difficulty = self.config.get("pow_difficulty", 4)
+            self.consensus_adapter = PoWAdapter(
+                blockchain=self.blockchain,
+                difficulty=difficulty,
+                metrics_collector=self.metrics_collector,
+                config=self.config
+            )
+            print(f"PoW setup with difficulty: {difficulty}")
 
         else:
             raise ValueError(f"Unsupported consensus type: {consensus_type}")
@@ -484,6 +497,169 @@ class PBFTAdapter:
 
             await asyncio.sleep(0.5)
 
+
+class PoWAdapter:
+    """
+    Adapter for the Proof of Work (PoW) consensus mechanism.
+    Simulates a single miner finding proofs and creating blocks.
+    """
+    def __init__(self, blockchain: Blockchain, difficulty: int,
+                 metrics_collector: MetricsCollector, config: dict):
+        """
+        Initializes the PoWAdapter.
+
+        Args:
+            blockchain (Blockchain): The blockchain instance.
+            difficulty (int): The PoW difficulty (e.g., number of leading zeros).
+            metrics_collector (MetricsCollector): Collector for benchmark metrics.
+            config (dict): Benchmark configuration.
+        """
+        self.blockchain = blockchain
+        self.pow_consensus = PoWConsensus(difficulty)
+        self.metrics_collector = metrics_collector
+        self.config = config
+        self._processing_task: asyncio.Task | None = None
+        self._stop_processing_event = asyncio.Event()
+        self._all_tx_submitted_event = asyncio.Event()
+        self.miner_id = self.config.get("pow_miner_id", "benchmark_pow_miner")
+
+    async def submit_transaction(self, tx: Transaction) -> bool:
+        """Adds transaction to the blockchain's pending pool."""
+        self.blockchain.add_transaction(tx)
+        # In PoW, block creation is not immediate upon tx submission by default.
+        # Start mining if not already, or rely on periodic mining.
+        if self._processing_task is None or self._processing_task.done():
+            self._ensure_mining_is_running()
+        return True
+
+    async def no_more_transactions(self):
+        """Signals that all transactions have been submitted."""
+        self._all_tx_submitted_event.set()
+        # Continue mining any remaining transactions.
+
+    async def stop_processing(self):
+        """Signals the mining loop to stop."""
+        print("PoWAdapter: Received signal to stop mining.")
+        self._stop_processing_event.set()
+
+    def _ensure_mining_is_running(self):
+        """Starts the mining task if it's not already running."""
+        if self._processing_task is None or self._processing_task.done():
+            print("PoWAdapter: Starting mining process...")
+            self._processing_task = asyncio.create_task(self._mine_blocks())
+
+
+    async def _mine_blocks(self):
+        """
+        Internal task that simulates a miner creating blocks via Proof of Work.
+        Continuously tries to mine a new block if there are pending transactions
+        or if configured to mine empty blocks (not currently supported).
+        """
+        while not self._stop_processing_event.is_set():
+            if not self.blockchain.pending_transactions:
+                if self._all_tx_submitted_event.is_set():
+                    print("PoWAdapter: All submitted transactions processed, no more pending. Stopping mining.")
+                    self._stop_processing_event.set()
+                    break
+                # No transactions, wait a bit before checking again or stop if configured.
+                # This simple version will keep checking.
+                try:
+                    await asyncio.wait_for(asyncio.sleep(0.1), timeout=0.15)
+                except asyncio.TimeoutError:
+                    pass
+                if self._stop_processing_event.is_set(): break
+                continue
+
+            tx_list_for_block = list(self.blockchain.pending_transactions)
+
+            # Perform Proof of Work
+            # The proof_of_work method is blocking, so for truly async behavior,
+            # it would need to be run in an executor if it's CPU-bound and long.
+            # For simulation, direct call is fine but will block this task.
+            print(f"PoWAdapter: Starting PoW for block {self.blockchain.last_block.index + 1} with {len(tx_list_for_block)} txs...")
+
+            # Explicitly import Block here for testing task scope
+            from src.blockchain.block import Block
+
+            mined_info = self.pow_consensus.proof_of_work(
+                self.blockchain.last_block,
+                tx_list_for_block,
+                miner_id=self.miner_id
+            )
+
+            if self._stop_processing_event.is_set(): break # Check immediately after potentially long PoW
+
+            if mined_info:
+                nonce, new_hash, timestamp = mined_info
+                new_block = Block(
+                    index=self.blockchain.last_block.index + 1,
+                    transactions=tx_list_for_block, # These are dicts
+                    timestamp=timestamp,
+                    previous_hash=self.blockchain.last_block.hash,
+                    nonce=nonce,
+                    sealer_id=self.miner_id
+                )
+                # The block's hash is calculated on init. It must match new_hash.
+                if new_block.hash != new_hash:
+                    self.metrics_collector.record_error(f"PoWAdapter: Mined hash {new_hash} != block hash {new_block.hash}")
+                    continue # Skip this block
+
+                if self.pow_consensus.validate_proof(new_block):
+                    if self.blockchain.add_block(new_block):
+                        print(f"PoWAdapter: Mined and added Block {new_block.index} with {len(new_block.transactions)} txs. Nonce: {nonce}.")
+                        self.metrics_collector.record_block_committed(
+                            new_block.index, len(new_block.transactions), time.perf_counter()
+                        )
+                        for tx_dict in new_block.transactions:
+                            self.metrics_collector.record_tx_finalized(
+                                tx_dict['transaction_id'], new_block.index, time.perf_counter()
+                            )
+                    else:
+                        self.metrics_collector.record_error(f"PoWAdapter: Blockchain rejected mined block {new_block.index}")
+                else:
+                    self.metrics_collector.record_error(f"PoWAdapter: Mined block {new_block.index} failed PoW validation.")
+            else:
+                # proof_of_work might return None if interrupted, though not implemented yet
+                print("PoWAdapter: Mining did not produce a result (possibly interrupted).")
+
+            # Yield control briefly to allow other tasks to run, especially if mining was quick
+            await asyncio.sleep(0)
+
+        print("PoWAdapter: Mining loop stopped.")
+
+    async def wait_for_completion(self, num_target_transactions: int):
+        """
+        Waits for the PoW simulation to process the target number of transactions
+        or until a timeout occurs. Ensures the mining task is running.
+        """
+        self._ensure_mining_is_running() # Start mining task if not already
+
+        start_wait = time.perf_counter()
+        timeout_base = self.config.get("post_submission_wait_seconds", 20)
+        # PoW can be slow, timeout needs to be generous or based on expected mining time per tx
+        timeout_per_tx = self.config.get("timeout_per_tx_factor_pow", 2.0) # Allow more time per tx for PoW
+        timeout_seconds = timeout_base + (num_target_transactions * timeout_per_tx)
+
+        print(f"PoWAdapter: Waiting for {num_target_transactions} transactions to be finalized. Timeout: {timeout_seconds:.2f}s")
+
+        while not self._stop_processing_event.is_set():
+            finalized_count = len(self.metrics_collector.tx_finalized_timestamps.keys())
+            if finalized_count >= num_target_transactions:
+                print(f"PoWAdapter: Target of {num_target_transactions} transactions finalized.")
+                self._stop_processing_event.set()
+                break
+            if time.perf_counter() - start_wait > timeout_seconds:
+                print(f"PoWAdapter: Timeout waiting for completion. {finalized_count}/{num_target_transactions} finalized.")
+                self._stop_processing_event.set()
+                break
+            await asyncio.sleep(0.2)
+
+        if self._processing_task and not self._processing_task.done():
+            try:
+                await asyncio.wait_for(self._processing_task, timeout=5.0)
+            except asyncio.TimeoutError:
+                print("PoWAdapter: Timeout waiting for mining task to finish after stop signal.")
+                self._processing_task.cancel()
 
 # Removed __main__ block to isolate syntax error cause.
 # The main execution logic is now in the top-level run_benchmark.py script.
