@@ -570,10 +570,12 @@ class PoSAdapter:
         self._processing_task: asyncio.Task | None = None
         self._stop_processing_event = asyncio.Event()
         self._all_tx_submitted_event = asyncio.Event()
+        self._creation_lock = asyncio.Lock()
 
     async def submit_transaction(self, tx: Transaction) -> bool:
         self.blockchain.add_transaction(tx)
-        self._ensure_block_creation_is_running()
+        async with self._creation_lock:
+            self._ensure_block_creation_is_running()
         return True
 
     async def no_more_transactions(self):
