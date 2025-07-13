@@ -142,22 +142,27 @@ class PBFTNode:
     def handle_client_request(self, request_payload: any):
         """
         Handles a new client request payload.
-        If this node is the primary, it adds the request to its pending queue and
-        initiates the pre-prepare phase if it's the only pending request.
-        If not primary, it currently logs this fact (forwarding logic could be added).
+        If this node is the primary, it adds the request to its pending queue.
+        If not primary, it forwards the request to the current primary.
 
         Args:
-            request_payload (any): The payload of the client's request (e.g., a transaction
-                                   dictionary or a list of such dictionaries).
+            request_payload (any): The payload of the client's request.
         """
         print(f"Node {self.node_id} (V:{self.current_view}): Received client request payload: {str(request_payload)[:100]}...")
+
         if not self.is_primary():
-            print(f"Node {self.node_id}: Not primary for view {self.current_view}. Current primary: {self.primary_id}. Request not processed by this node.")
+            print(f"Node {self.node_id}: Not primary for view {self.current_view}. Forwarding to primary: {self.primary_id}")
+            # Forward the request to the primary
+            if self.network_simulator and self.primary_id in self.network_simulator.nodes:
+                primary_node = self.network_simulator.nodes[self.primary_id]
+                primary_node.handle_client_request(request_payload)
+            else:
+                print(f"Node {self.node_id}: Cannot forward request - no network simulator or primary not found")
             return
 
         self.pending_client_requests.append(request_payload)
-        if len(self.pending_client_requests) == 1: # Process immediately if it's the first in queue
-             self.initiate_pre_prepare()
+        if len(self.pending_client_requests) == 1:  # Process immediately if it's the first in queue
+            self.initiate_pre_prepare()
 
 
     def initiate_pre_prepare(self):

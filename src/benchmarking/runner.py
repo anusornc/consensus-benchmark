@@ -305,12 +305,23 @@ class PBFTAdapter:
         self._patch_pbft_nodes_for_metrics()
 
     def _find_initial_primary(self):
-        if not self.nodes: return
+        """Find the initial primary node based on PBFT view 0 calculation."""
+        if not self.nodes:
+            return
+
+        # Primary for view 0 is node at index (0 % n)
+        node_ids = sorted(list(self.nodes.keys()))
+
+        # Verify which node actually considers itself primary
         for node_id, node in self.nodes.items():
             if node.is_primary():
                 self.primary_node_id = node_id
+                print(f"PBFTAdapter: Found primary node {node_id} for view {node.current_view}")
                 return
-        self.primary_node_id = list(self.nodes.keys())[0]
+
+        # Fallback to calculated primary
+        self.primary_node_id = node_ids[0]
+        print(f"PBFTAdapter: Using fallback primary {self.primary_node_id}")
 
     def _patch_pbft_nodes_for_metrics(self):
         for node_id, node_obj in self.nodes.items():
@@ -340,15 +351,42 @@ class PBFTAdapter:
                         _adapter_self.metrics_collector.record_error(f"PBFTAdapter: Mismatch mapping seq_num {seq_num} to block on node {_node_instance.node_id}.")
             node_obj.execute_request = metrics_execute_request_wrapper
 
+    def _ensure_processing_is_running(self):
+        """Ensure PBFT processing loop is running."""
+        if self._processing_task is None or self._processing_task.done():
+            print("PBFTAdapter: Starting PBFT processing loop...")
+            self._processing_task = asyncio.create_task(self._pbft_processing_loop())
+
+    async def _pbft_processing_loop(self):
+        """Processing loop to handle PBFT operations."""
+        while not self._stop_processing_event.is_set():
+            # Check if primary has pending requests and should start pre-prepare
+            if self.primary_node_id and self.primary_node_id in self.nodes:
+                primary_node = self.nodes[self.primary_node_id]
+                if primary_node.pending_client_requests and primary_node.is_primary():
+                    # Trigger pre-prepare if not already in progress
+                    if not any(log_entry['status'] == 'pre-preparing'
+                              for view_log in primary_node.message_log.values()
+                              for log_entry in view_log.values()):
+                        primary_node.initiate_pre_prepare()
+
+            await asyncio.sleep(0.1)  # Check every 100ms
+
     async def submit_transaction(self, tx: Transaction) -> bool:
         if not self.primary_node_id:
             self.metrics_collector.record_error("PBFTAdapter: No primary PBFT node identified.")
             return False
+
         primary_node = self.nodes.get(self.primary_node_id)
         if not primary_node:
             self.metrics_collector.record_error(f"PBFTAdapter: Primary node {self.primary_node_id} not found.")
             return False
+
         primary_node.handle_client_request(tx.to_dict())
+
+        # Ensure processing is running
+        self._ensure_processing_is_running()
+
         return True
 
     async def no_more_transactions(self):

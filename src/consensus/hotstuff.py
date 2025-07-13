@@ -55,6 +55,19 @@ class HotStuffNode:
         self.update_primary()
         print(f"HotStuffNode {self.node_id} initialized. N={self.n}, f={self.f}, QuorumSize={self.quorum_size}. Primary for view 0: {self.primary_id}")
 
+        # Create genesis QC for the genesis block
+        if self.blockchain.chain:
+            genesis_block = self.blockchain.chain[0]
+            self.genesis_qc = QuorumCertificate(
+                view_number=-1,  # Genesis QC has view -1
+                block_hash=genesis_block.hash,
+                signatures=self.all_node_ids  # All nodes sign genesis QC
+            )
+            if self.prepare_qc is None:
+                self.prepare_qc = self.genesis_qc
+        else:
+            self.genesis_qc = None
+
     def set_network_simulator(self, simulator):
         self.network_simulator = simulator
 
@@ -75,14 +88,20 @@ class HotStuffNode:
     # --- Client Request and Proposal (Leader Logic) ---
 
     def handle_client_request(self, request_payload: any):
-        """Handles a new client request payload (for the leader)."""
+        """Handles a new client request payload (forwards to leader if not leader)."""
+        print(f"HotStuffNode {self.node_id}: Received client request: {str(request_payload)[:100]}...")
+
         if not self.is_primary():
-            # In a real system, would forward to leader. Here, we just ignore.
-            print(f"HotStuffNode {self.node_id}: Not primary, ignoring client request.")
+            print(f"HotStuffNode {self.node_id}: Not leader, forwarding to leader: {self.primary_id}")
+            # Forward to the current leader
+            if self.network_simulator and self.primary_id in self.network_simulator.nodes:
+                leader_node = self.network_simulator.nodes[self.primary_id]
+                leader_node.handle_client_request(request_payload)
+            else:
+                print(f"HotStuffNode {self.node_id}: Cannot forward - no network simulator or leader not found")
             return
 
         self.pending_client_requests.append(request_payload)
-        # Leader might propose immediately or batch. `on_beat` will handle proposal.
         print(f"HotStuffNode {self.node_id} (Leader): Queued client request. Total pending: {len(self.pending_client_requests)}")
 
     def on_beat(self):
@@ -208,55 +227,91 @@ class HotStuffNode:
             # Clear votes for the next proposal
             self.votes_for_current_proposal.clear()
 
-            # --- Simplified State Update & Commit Logic (now inside the quorum check) ---
-            previous_prepare_qc = self.prepare_qc
-            self.prepare_qc = new_qc
-            print(f"HotStuffNode {self.node_id} (Leader): Created new Prepare QC for block {new_qc.block_hash[:8]} in view {new_qc.view_number}")
+            # Update state based on the new QC
+            self._update_qc_and_check_commit(new_qc)
 
-            # Check for a 2-chain to update the locked_qc
-            # A 2-chain is formed if the new QC's block is a child of the block certified by the previous QC.
-            # This requires looking up the block, which is complex.
-            # Simplified check: if the views are consecutive. This is a weak proxy for parent-child relationship.
-            if previous_prepare_qc and new_qc.view_number == previous_prepare_qc.view_number + 1:
-                self.locked_qc = previous_prepare_qc
-                print(f"HotStuffNode {self.node_id} (Leader): Updated locked_qc to QC for view {self.locked_qc.view_number}")
+    def _update_qc_and_check_commit(self, new_qc: QuorumCertificate):
+        """Update QCs and check for 3-chain commit condition."""
+        # A new QC always becomes the highest QC we've seen.
+        self.prepare_qc = new_qc
+        print(f"HotStuffNode {self.node_id}: Updated prepare_qc to view {new_qc.view_number} for block {new_qc.block_hash[:8]}")
 
-                # Check for a 3-chain to commit a block
-                # Simplified commit rule: When we lock a QC (previous_prepare_qc), we commit its parent.
-                # The block to be committed is the one certified by the *newly promoted* locked_qc's parent.
-                # This is still very simplified. A real implementation would check block.qc.block_hash.
-                if self.locked_qc.view_number > 0: # Cannot commit genesis
-                    # This logic is flawed as it relies on local chain indexing, not block hashes.
-                    # This is a placeholder for a proper commit rule.
-                    try:
-                        parent_of_locked_block_qc = self.blockchain.chain[self.locked_qc.view_number].qc
-                        if parent_of_locked_block_qc:
-                            commit_block_hash = parent_of_locked_block_qc.block_hash
-                            self.execute_block(commit_block_hash)
-                    except IndexError:
-                        print(f"HotStuffNode {self.node_id} (Leader): Could not find block in local chain to check for commit.")
+        # --- Check for 2-chain (lock) and 3-chain (commit) ---
+        # Get the block that was just certified by the new QC
+        b_new = self.block_store.get(new_qc.block_hash)
+        if not b_new: return
+
+        # Get the parent block's QC (b_new.qc)
+        b_parent_qc = b_new.qc
+        if not b_parent_qc: return
+
+        # Get the parent block itself from the store
+        b_parent = self.block_store.get(b_parent_qc.block_hash)
+        if not b_parent: return
+
+        # Check for 2-chain: b_parent -> b_new
+        # This condition is met if b_new's parent is the block certified by b_parent_qc
+        # This is implicitly true by how we construct proposals, but we check view numbers
+        # for the 'one-chain' rule.
+        if b_parent_qc.view_number > (self.locked_qc.view_number if self.locked_qc else -1):
+             # The new QC's parent has a higher view than our current lock.
+             # This forms a 2-chain, so we update our lock.
+             self.locked_qc = b_parent_qc
+             print(f"HotStuffNode {self.node_id}: Updated locked_qc to QC for block {self.locked_qc.block_hash[:8]} in view {self.locked_qc.view_number}")
+
+        # Check for 3-chain: b_grandparent -> b_parent -> b_new
+        # This happens if the parent of our *newly locked* block is the block
+        # certified by our *previous* locked_qc.
+        # A simpler way to state the commit rule: If a node has a locked_qc,
+        # and it sees a QC for a block that extends from the locked_qc's block,
+        # it can commit the locked_qc's block.
+        # The logic above already updated locked_qc. So we check if the *new* locked_qc
+        # forms a 3-chain with its parent.
+        if self.locked_qc:
+            b_locked = self.block_store.get(self.locked_qc.block_hash)
+            if b_locked and b_locked.qc:
+                 b_grandparent_qc = b_locked.qc
+                 if b_grandparent_qc.view_number > (getattr(self.locked_qc, '_committed_view', -1)):
+                     # We have a 3-chain. Commit the grandparent block.
+                     commit_block_hash = b_grandparent_qc.block_hash
+                     print(f"HotStuffNode {self.node_id}: 3-chain detected! Committing block {commit_block_hash[:8]}")
+                     self.execute_block(commit_block_hash)
+                     # Avoid re-committing by 'remembering' what was committed
+                     # This is a simplification.
+                     self.locked_qc._committed_view = b_grandparent_qc.view_number
 
 
     def execute_block(self, block_hash: str):
         """
-        Placeholder for executing a committed block.
-        In a real implementation, this would apply the block's transactions to the state machine.
-        For now, it just prints a confirmation.
+        Executes a committed block and updates metrics.
         """
-        # This logic needs to be more robust. How does a node find the block by hash?
-        # We need a block store/lookup. For now, we search the local chain.
-        block_to_execute = None
-        for block in reversed(self.blockchain.chain):
-            if block.hash == block_hash:
-                block_to_execute = block
-                break
+        # Find block by hash in our block store
+        block_to_execute = self.block_store.get(block_hash)
+
+        if not block_to_execute:
+            # Search in blockchain chain as fallback
+            for block in self.blockchain.chain:
+                if block.hash == block_hash:
+                    block_to_execute = block
+                    break
 
         if block_to_execute:
-             print(f"HotStuffNode {self.node_id}: **COMMITTING & EXECUTING** block {block_to_execute.index} with hash {block_hash[:8]}...")
-             # Here, we would tell the benchmark runner that a block and its transactions are finalized.
-             # This needs a proper implementation in the HotStuffAdapter.
+            print(f"HotStuffNode {self.node_id}: **COMMITTING & EXECUTING** block {block_to_execute.index} with hash {block_hash[:8]}...")
+
+            # Mark as executed to avoid double execution
+            if not hasattr(self, '_executed_blocks'):
+                self._executed_blocks = set()
+
+            if block_hash not in self._executed_blocks:
+                self._executed_blocks.add(block_hash)
+                # This will be picked up by the adapter's metrics patching
+                return block_to_execute
+            else:
+                print(f"HotStuffNode {self.node_id}: Block {block_hash[:8]} already executed")
         else:
             print(f"HotStuffNode {self.node_id}: Could not find block with hash {block_hash[:8]} to execute.")
+
+        return None
 
 
 if __name__ == '__main__':
