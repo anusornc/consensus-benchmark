@@ -1,0 +1,373 @@
+[
+  {
+    "transaction_id": "urn:uuid:78e75662-2232-4c80-a43d-691ac265f83a",
+    "timestamp": 1752399111.619808,
+    "transaction_type": "asset_creation",
+    "asset_id_value": "urn:example:asset:milkbatch001",
+    "agent_ids": {
+      "creator_agent_id": "urn:example:agent:farm001"
+    },
+    "data": {
+      "@context": {
+        "prov": "https://www.w3.org/ns/prov#",
+        "xsd": "http://www.w3.org/2001/XMLSchema#",
+        "Entity": "prov:Entity",
+        "Activity": "prov:Activity",
+        "Agent": "prov:Agent",
+        "wasGeneratedBy": {
+          "@id": "prov:wasGeneratedBy",
+          "@type": "@id"
+        },
+        "used": {
+          "@id": "prov:used",
+          "@type": "@id"
+        },
+        "wasAssociatedWith": {
+          "@id": "prov:wasAssociatedWith",
+          "@type": "@id"
+        },
+        "wasAttributedTo": {
+          "@id": "prov:wasAttributedTo",
+          "@type": "@id"
+        },
+        "startedAtTime": {
+          "@id": "prov:startedAtTime",
+          "@type": "xsd:dateTime"
+        },
+        "endedAtTime": {
+          "@id": "prov:endedAtTime",
+          "@type": "xsd:dateTime"
+        },
+        "atLocation": "prov:atLocation",
+        "label": "rdfs:label"
+      },
+      "@graph": [
+        {
+          "@id": "urn:example:asset:milkbatch001",
+          "@type": "prov:Entity",
+          "prov:wasGeneratedBy": "urn:uuid:26dc024b-acb5-436c-aaec-69fc5f257032",
+          "prov:wasAttributedTo": "urn:example:agent:farm001",
+          "rdfs:label": "Asset urn:example:asset:milkbatch001",
+          "ex:assetType": "RawMilk",
+          "ex:volume_liters": 1000,
+          "prov:atLocation": "Farm 001"
+        },
+        {
+          "@id": "urn:uuid:26dc024b-acb5-436c-aaec-69fc5f257032",
+          "@type": "prov:Activity",
+          "rdfs:label": "Asset Creation",
+          "prov:endedAtTime": {
+            "@type": "xsd:dateTime",
+            "@value": "2025-07-13T09:31:51Z"
+          },
+          "prov:wasAssociatedWith": "urn:example:agent:farm001"
+        },
+        {
+          "@id": "urn:example:agent:farm001",
+          "@type": "prov:Agent",
+          "rdfs:label": "Agent urn:example:agent:farm001"
+        }
+      ]
+    }
+  },
+  {
+    "transaction_id": "urn:uuid:1c0570a0-f2b9-43f7-a388-92ef4e2db530",
+    "timestamp": 1752399111.620186,
+    "transaction_type": "asset_transfer",
+    "asset_id_value": "urn:example:asset:milkbatch001",
+    "agent_ids": {
+      "from_agent_id": "urn:example:agent:farm001",
+      "to_agent_id": "urn:example:agent:manufacturer001"
+    },
+    "data": {
+      "@context": {
+        "prov": "https://www.w3.org/ns/prov#",
+        "xsd": "http://www.w3.org/2001/XMLSchema#",
+        "Entity": "prov:Entity",
+        "Activity": "prov:Activity",
+        "Agent": "prov:Agent",
+        "wasGeneratedBy": {
+          "@id": "prov:wasGeneratedBy",
+          "@type": "@id"
+        },
+        "used": {
+          "@id": "prov:used",
+          "@type": "@id"
+        },
+        "wasAssociatedWith": {
+          "@id": "prov:wasAssociatedWith",
+          "@type": "@id"
+        },
+        "wasAttributedTo": {
+          "@id": "prov:wasAttributedTo",
+          "@type": "@id"
+        },
+        "startedAtTime": {
+          "@id": "prov:startedAtTime",
+          "@type": "xsd:dateTime"
+        },
+        "endedAtTime": {
+          "@id": "prov:endedAtTime",
+          "@type": "xsd:dateTime"
+        },
+        "atLocation": "prov:atLocation",
+        "label": "rdfs:label"
+      },
+      "@graph": [
+        {
+          "@id": "urn:example:asset:milkbatch001",
+          "@type": "prov:Entity",
+          "rdfs:label": "Asset urn:example:asset:milkbatch001"
+        },
+        {
+          "@id": "urn:uuid:1e0d925a-3258-454a-a7b6-6f1fe433f4cc",
+          "@type": "prov:Activity",
+          "rdfs:label": "Asset Transfer",
+          "prov:used": "urn:example:asset:milkbatch001",
+          "prov:endedAtTime": {
+            "@type": "xsd:dateTime",
+            "@value": "2025-07-13T09:31:51Z"
+          },
+          "prov:wasAssociatedWith": [
+            "urn:example:agent:farm001",
+            "urn:example:agent:manufacturer001"
+          ]
+        },
+        {
+          "@id": "urn:example:agent:farm001",
+          "@type": "prov:Agent",
+          "rdfs:label": "Agent urn:example:agent:farm001"
+        },
+        {
+          "@id": "urn:example:agent:manufacturer001",
+          "@type": "prov:Agent",
+          "rdfs:label": "Agent urn:example:agent:manufacturer001"
+        }
+      ]
+    }
+  },
+  {
+    "transaction_id": "urn:uuid:2ccdb213-e60d-41bd-880e-1b8c7f3ad587",
+    "timestamp": 1752399111.6202052,
+    "transaction_type": "asset_creation",
+    "asset_id_value": "urn:example:asset:uhtbatch001",
+    "agent_ids": {
+      "creator_agent_id": "urn:example:agent:manufacturer001"
+    },
+    "data": {
+      "@context": {
+        "prov": "https://www.w3.org/ns/prov#",
+        "xsd": "http://www.w3.org/2001/XMLSchema#",
+        "Entity": "prov:Entity",
+        "Activity": "prov:Activity",
+        "Agent": "prov:Agent",
+        "wasGeneratedBy": {
+          "@id": "prov:wasGeneratedBy",
+          "@type": "@id"
+        },
+        "used": {
+          "@id": "prov:used",
+          "@type": "@id"
+        },
+        "wasAssociatedWith": {
+          "@id": "prov:wasAssociatedWith",
+          "@type": "@id"
+        },
+        "wasAttributedTo": {
+          "@id": "prov:wasAttributedTo",
+          "@type": "@id"
+        },
+        "startedAtTime": {
+          "@id": "prov:startedAtTime",
+          "@type": "xsd:dateTime"
+        },
+        "endedAtTime": {
+          "@id": "prov:endedAtTime",
+          "@type": "xsd:dateTime"
+        },
+        "atLocation": "prov:atLocation",
+        "label": "rdfs:label"
+      },
+      "@graph": [
+        {
+          "@id": "urn:example:asset:uhtbatch001",
+          "@type": "prov:Entity",
+          "prov:wasGeneratedBy": "urn:uuid:a003a0d5-1f4e-4e00-a8de-4d05f08f3d88",
+          "prov:wasAttributedTo": "urn:example:agent:manufacturer001",
+          "rdfs:label": "Asset urn:example:asset:uhtbatch001",
+          "ex:assetType": "UHTMilk",
+          "ex:volume_liters": 950,
+          "prov:atLocation": "Manufacturer 001",
+          "ex:sourceAsset": "urn:example:asset:milkbatch001"
+        },
+        {
+          "@id": "urn:uuid:a003a0d5-1f4e-4e00-a8de-4d05f08f3d88",
+          "@type": "prov:Activity",
+          "rdfs:label": "Asset Creation",
+          "prov:endedAtTime": {
+            "@type": "xsd:dateTime",
+            "@value": "2025-07-13T09:31:51Z"
+          },
+          "prov:wasAssociatedWith": "urn:example:agent:manufacturer001"
+        },
+        {
+          "@id": "urn:example:agent:manufacturer001",
+          "@type": "prov:Agent",
+          "rdfs:label": "Agent urn:example:agent:manufacturer001"
+        }
+      ]
+    }
+  },
+  {
+    "transaction_id": "urn:uuid:3cee8330-04d7-46d8-b6da-c5269a11aac0",
+    "timestamp": 1752399111.620218,
+    "transaction_type": "asset_transfer",
+    "asset_id_value": "urn:example:asset:uhtbatch001",
+    "agent_ids": {
+      "from_agent_id": "urn:example:agent:manufacturer001",
+      "to_agent_id": "urn:example:agent:logistics001"
+    },
+    "data": {
+      "@context": {
+        "prov": "https://www.w3.org/ns/prov#",
+        "xsd": "http://www.w3.org/2001/XMLSchema#",
+        "Entity": "prov:Entity",
+        "Activity": "prov:Activity",
+        "Agent": "prov:Agent",
+        "wasGeneratedBy": {
+          "@id": "prov:wasGeneratedBy",
+          "@type": "@id"
+        },
+        "used": {
+          "@id": "prov:used",
+          "@type": "@id"
+        },
+        "wasAssociatedWith": {
+          "@id": "prov:wasAssociatedWith",
+          "@type": "@id"
+        },
+        "wasAttributedTo": {
+          "@id": "prov:wasAttributedTo",
+          "@type": "@id"
+        },
+        "startedAtTime": {
+          "@id": "prov:startedAtTime",
+          "@type": "xsd:dateTime"
+        },
+        "endedAtTime": {
+          "@id": "prov:endedAtTime",
+          "@type": "xsd:dateTime"
+        },
+        "atLocation": "prov:atLocation",
+        "label": "rdfs:label"
+      },
+      "@graph": [
+        {
+          "@id": "urn:example:asset:uhtbatch001",
+          "@type": "prov:Entity",
+          "rdfs:label": "Asset urn:example:asset:uhtbatch001"
+        },
+        {
+          "@id": "urn:uuid:02d4f9a1-3813-40bb-b6d1-e2901332e33c",
+          "@type": "prov:Activity",
+          "rdfs:label": "Asset Transfer",
+          "prov:used": "urn:example:asset:uhtbatch001",
+          "prov:endedAtTime": {
+            "@type": "xsd:dateTime",
+            "@value": "2025-07-13T09:31:51Z"
+          },
+          "prov:wasAssociatedWith": [
+            "urn:example:agent:manufacturer001",
+            "urn:example:agent:logistics001"
+          ]
+        },
+        {
+          "@id": "urn:example:agent:manufacturer001",
+          "@type": "prov:Agent",
+          "rdfs:label": "Agent urn:example:agent:manufacturer001"
+        },
+        {
+          "@id": "urn:example:agent:logistics001",
+          "@type": "prov:Agent",
+          "rdfs:label": "Agent urn:example:agent:logistics001"
+        }
+      ]
+    }
+  },
+  {
+    "transaction_id": "urn:uuid:67d73ce0-f6a1-4dfa-9d0f-674d6740d73b",
+    "timestamp": 1752399111.620229,
+    "transaction_type": "asset_transfer",
+    "asset_id_value": "urn:example:asset:uhtbatch001",
+    "agent_ids": {
+      "from_agent_id": "urn:example:agent:logistics001",
+      "to_agent_id": "urn:example:agent:retail001"
+    },
+    "data": {
+      "@context": {
+        "prov": "https://www.w3.org/ns/prov#",
+        "xsd": "http://www.w3.org/2001/XMLSchema#",
+        "Entity": "prov:Entity",
+        "Activity": "prov:Activity",
+        "Agent": "prov:Agent",
+        "wasGeneratedBy": {
+          "@id": "prov:wasGeneratedBy",
+          "@type": "@id"
+        },
+        "used": {
+          "@id": "prov:used",
+          "@type": "@id"
+        },
+        "wasAssociatedWith": {
+          "@id": "prov:wasAssociatedWith",
+          "@type": "@id"
+        },
+        "wasAttributedTo": {
+          "@id": "prov:wasAttributedTo",
+          "@type": "@id"
+        },
+        "startedAtTime": {
+          "@id": "prov:startedAtTime",
+          "@type": "xsd:dateTime"
+        },
+        "endedAtTime": {
+          "@id": "prov:endedAtTime",
+          "@type": "xsd:dateTime"
+        },
+        "atLocation": "prov:atLocation",
+        "label": "rdfs:label"
+      },
+      "@graph": [
+        {
+          "@id": "urn:example:asset:uhtbatch001",
+          "@type": "prov:Entity",
+          "rdfs:label": "Asset urn:example:asset:uhtbatch001"
+        },
+        {
+          "@id": "urn:uuid:271905e1-0c51-48dd-bb74-ce821207eb5a",
+          "@type": "prov:Activity",
+          "rdfs:label": "Asset Transfer",
+          "prov:used": "urn:example:asset:uhtbatch001",
+          "prov:endedAtTime": {
+            "@type": "xsd:dateTime",
+            "@value": "2025-07-13T09:31:51Z"
+          },
+          "prov:wasAssociatedWith": [
+            "urn:example:agent:logistics001",
+            "urn:example:agent:retail001"
+          ]
+        },
+        {
+          "@id": "urn:example:agent:logistics001",
+          "@type": "prov:Agent",
+          "rdfs:label": "Agent urn:example:agent:logistics001"
+        },
+        {
+          "@id": "urn:example:agent:retail001",
+          "@type": "prov:Agent",
+          "rdfs:label": "Agent urn:example:agent:retail001"
+        }
+      ]
+    }
+  }
+]

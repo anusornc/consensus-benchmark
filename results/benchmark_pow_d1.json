@@ -1,0 +1,17 @@
+{
+  "benchmark_duration_seconds": 4.0534,
+  "total_transactions_submitted": 5,
+  "total_transactions_finalized_with_latency": 5,
+  "total_transactions_in_committed_blocks_in_window": 5,
+  "total_blocks_committed_in_window": 5,
+  "tps_based_on_finalized_tx_with_latency": 1.234,
+  "tps_based_on_committed_blocks_in_window": 1.68,
+  "avg_tx_latency_seconds": 0.655909,
+  "median_tx_latency_seconds": 0.671842,
+  "min_tx_latency_seconds": 0.133205,
+  "max_tx_latency_seconds": 1.384103,
+  "stdev_tx_latency_seconds": 0.536196,
+  "p99_tx_latency_seconds": 1.384103,
+  "num_errors": 0,
+  "first_3_errors": []
+}
