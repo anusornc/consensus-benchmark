@@ -303,6 +303,9 @@ class PBFTAdapter:
         self.globally_committed_seq_nums = set()
 
         self._patch_pbft_nodes_for_metrics()
+        self._processing_task = None  # Ensure this attribute exists for async processing
+        self._stop_processing_event = asyncio.Event()  # Fix missing event for async loop
+        self._processing_task = None  # Ensure this attribute exists for async processing
 
     def _find_initial_primary(self):
         """Find the initial primary node based on PBFT view 0 calculation."""

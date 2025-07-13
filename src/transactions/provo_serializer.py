@@ -179,29 +179,81 @@ def create_asset_transfer_prov(
 
 
 if __name__ == '__main__':
-    print("--- Asset Creation PROV-O Example ---")
-    asset_creation_data = create_asset_creation_prov(
-        asset_id="urn:example:asset:widget001",
-        creator_id="urn:example:user:Alice",
-        additional_asset_props={"ex:color": "blue", "ex:weight_kg": 1.5},
-        activity_label="Initial Manufacturing of Widget 001"
-    )
-    print(json.dumps(asset_creation_data, indent=2))
+    print("--- UHT Milk Supply Chain PROV-O Example ---")
 
-    print("\n--- Asset Transfer PROV-O Example ---")
-    asset_transfer_data = create_asset_transfer_prov(
-        asset_id="urn:example:asset:widget001",
-        from_agent_id="urn:example:user:Alice",
-        to_agent_id="urn:example:user:Bob",
-        activity_label="Transfer of Widget 001 from Alice to Bob"
-    )
-    print(json.dumps(asset_transfer_data, indent=2))
+    # 1. Farm produces raw milk
+    farm_id = "urn:example:agent:farm001"
+    manufacturer_id = "urn:example:agent:manufacturer001"
+    logistics_id = "urn:example:agent:logistics001"
+    retail_id = "urn:example:agent:retail001"
+    milk_asset_id = "urn:example:asset:milkbatch001"
 
-    # Example of using pyld (if installed and needed for expansion/compacting)
+    # Farm creates raw milk asset
+    farm_creation = create_asset_creation_prov(
+        asset_id=milk_asset_id,
+        creator_id=farm_id,
+        additional_asset_props={
+            "ex:assetType": "RawMilk",
+            "ex:volume_liters": 1000,
+            "ex:origin": "Farm 001",
+            "ex:date_harvested": "2025-07-10"
+        },
+        activity_label="Milking at Farm 001"
+    )
+    print("Farm creates raw milk:")
+    print(json.dumps(farm_creation, indent=2))
+
+    # 2. Manufacturer receives milk and produces UHT milk
+    uht_asset_id = "urn:example:asset:uhtbatch001"
+    manufacturer_creation = create_asset_creation_prov(
+        asset_id=uht_asset_id,
+        creator_id=manufacturer_id,
+        additional_asset_props={
+            "ex:assetType": "UHTMilk",
+            "ex:volume_liters": 950,
+            "ex:origin": "Manufacturer 001",
+            "ex:date_processed": "2025-07-11"
+        },
+        activity_label="UHT Processing at Manufacturer 001"
+    )
+    print("\nManufacturer processes UHT milk:")
+    print(json.dumps(manufacturer_creation, indent=2))
+
+    # Transfer raw milk from farm to manufacturer
+    farm_to_manufacturer_transfer = create_asset_transfer_prov(
+        asset_id=milk_asset_id,
+        from_agent_id=farm_id,
+        to_agent_id=manufacturer_id,
+        activity_label="Transfer Raw Milk from Farm to Manufacturer"
+    )
+    print("\nTransfer raw milk from farm to manufacturer:")
+    print(json.dumps(farm_to_manufacturer_transfer, indent=2))
+
+    # 3. Logistics transports UHT milk to retail
+    logistics_to_retail_transfer = create_asset_transfer_prov(
+        asset_id=uht_asset_id,
+        from_agent_id=manufacturer_id,
+        to_agent_id=logistics_id,
+        activity_label="Transport UHT Milk from Manufacturer to Logistics"
+    )
+    print("\nLogistics transports UHT milk from manufacturer to logistics:")
+    print(json.dumps(logistics_to_retail_transfer, indent=2))
+
+    # 4. Retail receives UHT milk from logistics
+    logistics_to_retail_final_transfer = create_asset_transfer_prov(
+        asset_id=uht_asset_id,
+        from_agent_id=logistics_id,
+        to_agent_id=retail_id,
+        activity_label="Deliver UHT Milk from Logistics to Retail"
+    )
+    print("\nRetail receives UHT milk from logistics:")
+    print(json.dumps(logistics_to_retail_final_transfer, indent=2))
+
+    # Optionally, show expanded JSON-LD for one transaction
     try:
         from pyld import jsonld
-        expanded = jsonld.expand(asset_creation_data)
-        print("\n--- Expanded JSON-LD (Asset Creation) ---")
+        expanded = jsonld.expand(farm_creation)
+        print("\n--- Expanded JSON-LD (Farm Creation) ---")
         print(json.dumps(expanded, indent=2))
     except ImportError:
         print("\nNote: pyld library not installed. Skipping expansion example.")

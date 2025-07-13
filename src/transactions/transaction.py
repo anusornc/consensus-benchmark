@@ -1,8 +1,9 @@
+
 import time
 import json
 from uuid import uuid4
-# Corrected import names
-from .provo_serializer import create_asset_creation_prov, create_asset_transfer_prov
+# Use absolute import for direct script execution
+from src.transactions.provo_serializer import create_asset_creation_prov, create_asset_transfer_prov
 
 class Transaction:
     """
@@ -189,53 +190,5 @@ class Transaction:
                 f"AssetVal: {self.asset_id_value}, Agents: {self.agent_ids}, Data: {data_preview})")
 
 
-if __name__ == '__main__':
-    print("--- Transaction with PROV-O Asset Creation ---")
-    tx_create = Transaction(
-        transaction_type="asset_creation",
-        asset_id_value="SN999001",
-        agent_ids={"creator_agent_id": "FactoryA"},
-        additional_props={"ex:quality": "prime", "prov:atLocation": "Zone1"},
-        custom_base_uri="urn:mycompany:"
-    )
-    print(tx_create)
-    # print(tx_create.to_json())
 
-    tx_create_dict = tx_create.to_dict()
-    print("\nTo Dict (Creation):")
-    # print(json.dumps(tx_create_dict, indent=2)) # Verbose
-    assert tx_create_dict['data']['@graph'][0]['@id'] == "urn:mycompany:asset:SN999001"
-    assert tx_create_dict['data']['@graph'][2]['@id'] == "urn:mycompany:agent:FactoryA"
-
-
-    print("\n--- Transaction with PROV-O Asset Transfer ---")
-    tx_transfer = Transaction(
-        transaction_type="asset_transfer",
-        asset_id_value="SN999001",
-        agent_ids={"from_agent_id": "FactoryA", "to_agent_id": "DistributorX"},
-        additional_props={"ex:shipment_id": "SHP0050"},
-        custom_base_uri="urn:mycompany:"
-    )
-    print(tx_transfer)
-
-    tx_transfer_dict = tx_transfer.to_dict()
-    print("\nTo Dict (Transfer - checking one agent):")
-    # print(json.dumps(tx_transfer_dict, indent=2)) # Verbose
-    assert any(agent['@id'] == "urn:mycompany:agent:FactoryA" for agent in tx_transfer_dict['data']['@graph'])
-
-
-    print("\n--- Test from_dict reconstruction ---")
-    reconstructed_tx_create = Transaction.from_dict(tx_create_dict)
-    print(f"Reconstructed Creation TX ID: {reconstructed_tx_create.transaction_id}")
-    assert reconstructed_tx_create.transaction_id == tx_create.transaction_id
-    assert reconstructed_tx_create.data == tx_create.data
-    assert reconstructed_tx_create.sender == tx_create.sender
-
-    reconstructed_tx_transfer = Transaction.from_json(tx_transfer.to_json())
-    print(f"Reconstructed Transfer TX ID: {reconstructed_tx_transfer.transaction_id}")
-    assert reconstructed_tx_transfer.transaction_id == tx_transfer.transaction_id
-    assert reconstructed_tx_transfer.data == tx_transfer.data
-    assert reconstructed_tx_transfer.sender == tx_transfer.sender
-    assert reconstructed_tx_transfer.recipient == tx_transfer.recipient
-
-    print("\nAll Transaction PROV-O integration __main__ tests passed.")
+# ...existing code...

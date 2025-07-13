@@ -142,4 +142,3 @@ if __name__ == '__main__':
     print(f"\nValidation of tampered Block 3: {is_valid_tampered}")
 
     print("\nDPoS Consensus basic tests finished.")
-```

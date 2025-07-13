@@ -1,6 +1,6 @@
 {
-  "benchmark_duration_seconds": 40.5751,
-  "total_transactions_submitted": 3,
+  "benchmark_duration_seconds": 45.6602,
+  "total_transactions_submitted": 5,
   "total_transactions_finalized_with_latency": 0,
   "total_transactions_in_committed_blocks_in_window": 0,
   "total_blocks_committed_in_window": 0,
